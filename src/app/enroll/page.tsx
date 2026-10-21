@@ -1,73 +1,57 @@
 'use client'
-import { useState, useCallback, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import Link from 'next/link'
 import {
-  ArrowLeft, ArrowRight, User, Wallet, Upload, Check,
-  Lock, LoaderCircle, Copy, Shield, Image as ImageIcon,
-  AlertCircle, CheckCircle, MessageCircle, Star
+  ArrowLeft, ArrowRight, User, Wallet, Check,
+  Lock, LoaderCircle, Copy, Shield,
+  AlertCircle, Star, Sparkles, CheckCircle2, QrCode, CreditCard, ChevronRight
 } from 'lucide-react'
+import { trackMetaEvent, trackMetaButtonClick, trackMetaBoostBeacon, IS_META_BOOST_MODE } from '@/lib/meta-tracking'
 
-const COURSE_PRICE     = 799
-const BKASH_NUMBER     = process.env.NEXT_PUBLIC_BKASH_NUMBER        ?? '01896195441'
-const BKASH_NAME       = 'The Patchee BD'
-const WHATSAPP_SUPPORT = process.env.NEXT_PUBLIC_WHATSAPP_SUPPORT    ?? '8801847800664'
-
-const STEP_LABELS: Record<number, string> = { 1: 'Your Details', 2: 'Send Payment', 3: 'Upload Proof' }
-
-function getGAClientId(): string | undefined {
-  if (typeof document === 'undefined') return undefined
-  const match = document.cookie.match(/_ga=(?:GA\d\.\d\.)?(\d+\.\d+)/)
-  return match ? match[1] : undefined
-}
-
-// ── Google Ads helpers ──────────────────────────────────────────────────────
-function gtagSafe(
-  params: Record<string, unknown>,
-  userData?: { email: string; phone: string }
-) {
-  const fire = () => {
-    if (typeof window === 'undefined' || !(window as any).gtag) return
-    if (userData) {
-      // Normalise BD phone to E.164 (+880...)
-      const normPhone = userData.phone.replace(/\D/g, '')
-      const e164 = normPhone.startsWith('880') ? `+${normPhone}` :
-                   normPhone.startsWith('0')   ? `+880${normPhone.slice(1)}` :
-                   `+${normPhone}`
-      ;(window as any).gtag('set', 'user_data', { email: userData.email, phone_number: e164 })
-    }
-    if (params.send_to && !String(params.send_to).includes('undefined')) {
-      ;(window as any).gtag('event', 'conversion', params)
-    }
-  }
-  if (typeof window !== 'undefined' && (window as any).gtag) {
-    fire()
-  } else {
-    setTimeout(fire, 1500)
+declare global {
+  interface Window {
+    Razorpay: any
+    fbq?: any
+    gtag?: any
   }
 }
 
-// ── Step Indicator ─────────────────────────────────────────────────────────
+const BASE_PRICE = 499
+
+const WHATSAPP_SUPPORT = process.env.NEXT_PUBLIC_WHATSAPP_SUPPORT ?? '919876543210'
+
+const INDIAN_CITIES = [
+  'Bengaluru', 'Mumbai', 'Delhi NCR', 'Hyderabad', 'Pune',
+  'Chennai', 'Kolkata', 'Ahmedabad', 'Jaipur', 'Lucknow',
+  'Chandigarh', 'Surat', 'Indore', 'Kochi', 'Noida', 'Gurugram', 'Other'
+]
+
+function fireGA4Event(eventName: string, params: Record<string, unknown>) {
+  if (typeof window === 'undefined' || !window.gtag) return
+  window.gtag('event', eventName, params)
+}
+
 function StepBar({ step }: { step: number }) {
   return (
-    <div className="mb-4 flex items-center gap-1.5 sm:gap-2">
-      {[1, 2, 3].map((s, i) => {
+    <div className="mb-4 flex items-center gap-2">
+      {[1, 2].map((s) => {
         const done = s < step
         const active = s === step
         return (
-          <div key={s} className="flex flex-1 items-center gap-1.5 sm:gap-2">
-            <div className={`grid h-7 w-7 shrink-0 place-items-center rounded-full text-xs font-bold sm:h-8 sm:w-8 sm:text-sm
+          <div key={s} className="flex flex-1 items-center gap-2">
+            <div className={`grid h-7 w-7 shrink-0 place-items-center rounded-full text-xs font-bold transition-all
               ${done ? 'bg-gradient-to-br from-blue-600 to-cyan-500 text-white' :
-                active ? 'bg-gradient-to-br from-blue-600 to-cyan-500 text-white shadow-[0_0_16px_rgba(37,99,235,0.4)]' :
+                active ? 'bg-gradient-to-br from-blue-600 to-cyan-500 text-white shadow-md ring-2 ring-blue-300' :
                 'bg-slate-100 text-slate-400'}`}>
-              {done ? <Check className="h-4 w-4" /> : s}
+              {done ? <Check className="h-3.5 w-3.5 stroke-[3]" /> : s}
             </div>
-            <div className="min-w-0 flex-1">
-              <div className={`truncate text-[10px] font-semibold uppercase tracking-wider sm:text-xs
-                ${done || active ? 'text-slate-800' : 'text-slate-400'}`}>
-                {STEP_LABELS[s]}
+            <div className="flex-1">
+              <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Step 0{s}</div>
+              <div className={`text-xs font-bold leading-none ${active ? 'text-blue-600' : 'text-slate-700'}`}>
+                {s === 1 ? 'Your Details' : 'Payment'}
               </div>
-              {i < 2 && <div className="mt-1 hidden h-px w-full bg-slate-200 sm:block" />}
             </div>
+            {s === 1 && <div className="h-0.5 w-6 bg-slate-200" />}
           </div>
         )
       })}
@@ -75,41 +59,141 @@ function StepBar({ step }: { step: number }) {
   )
 }
 
-// ── Step 1 — Details ───────────────────────────────────────────────────────
-function Step1({ onDone }: { onDone: (leadId: string, data: { name: string; email: string; whatsapp: string }) => void }) {
-  const [name, setName]     = useState('')
-  const [email, setEmail]   = useState('')
-  const [wa, setWa]         = useState('')
-  const [err, setErr]       = useState<string | null>(null)
-  const [loading, setLoading] = useState(false)
+export default function EnrollPage() {
+  const [step, setStep] = useState<1 | 2>(1)
+  const [leadId, setLeadId] = useState<string>('')
+  const [userData, setUserData] = useState({
+    name: '',
+    email: '',
+    whatsapp: '',
+    city: 'Bengaluru',
+    totalAmount: BASE_PRICE,
+  })
+  const [successPayment, setSuccessPayment] = useState<{ transactionId: string; accessLink: string } | null>(null)
 
-  const submit = async (e: React.FormEvent) => {
+  // ── Session persistence: if customer refreshes after paying, keep their access card visible ──
+  useEffect(() => {
+    try {
+      const saved = sessionStorage.getItem('ai_bootcamp_in_verified')
+      if (saved) {
+        const parsed = JSON.parse(saved)
+        if (parsed.transactionId && parsed.accessLink) {
+          setSuccessPayment({ transactionId: parsed.transactionId, accessLink: parsed.accessLink })
+          if (parsed.userData) setUserData(parsed.userData)
+        }
+      }
+    } catch (e) {
+      // Ignore storage errors
+    }
+
+    trackMetaEvent({
+      eventName: 'ViewContent',
+      customData: {
+        content_name: 'Enrollment Form India',
+        value: BASE_PRICE,
+        currency: 'INR',
+      }
+    })
+    fireGA4Event('view_item', { value: BASE_PRICE, currency: 'INR' })
+  }, [])
+
+  return (
+    <div className="min-h-screen bg-[#fafafa] text-slate-800">
+      {/* Header */}
+      <header className="border-b border-slate-200/80 bg-white/90 backdrop-blur-xl">
+        <div className="mx-auto flex max-w-4xl items-center justify-between px-4 py-3 sm:px-6">
+          <Link href="/" className="flex items-center gap-2">
+            <div className="grid h-8 w-8 place-items-center rounded-xl gradient-brand text-white font-bold text-xs">AI</div>
+            <div className="font-['Sora'] text-sm font-bold tracking-tight text-slate-900">AI Video Bootcamp India 🇮🇳</div>
+          </Link>
+          <div className="flex items-center gap-1.5 text-xs font-semibold text-emerald-700 bg-emerald-50 px-3 py-1 rounded-full">
+            <Lock className="h-3 w-3" /> 256-Bit SSL Secure
+          </div>
+        </div>
+      </header>
+
+      {/* Main Container */}
+      <main className="mx-auto max-w-xl px-4 py-6 sm:py-10">
+        {successPayment ? (
+          <SuccessView
+            transactionId={successPayment.transactionId}
+            accessLink={successPayment.accessLink}
+            userData={userData}
+          />
+        ) : (
+          <div className="rounded-3xl border border-slate-200/80 bg-white p-6 shadow-sm sm:p-8">
+            <StepBar step={step} />
+
+            {step === 1 ? (
+              <Step1Form
+                onComplete={(id, data) => {
+                  setLeadId(id)
+                  setUserData(data)
+                  setStep(2)
+                }}
+              />
+            ) : (
+              <Step2Payment
+                leadId={leadId}
+                userData={userData}
+                onBack={() => setStep(1)}
+                onSuccess={(txId, link) => {
+                  try {
+                    sessionStorage.setItem('ai_bootcamp_in_verified', JSON.stringify({
+                      transactionId: txId,
+                      accessLink: link,
+                      userData,
+                    }))
+                  } catch (e) {}
+                  setSuccessPayment({ transactionId: txId, accessLink: link })
+                }}
+              />
+            )}
+          </div>
+        )}
+      </main>
+    </div>
+  )
+}
+
+// ─── Step 1: User Details Form ───────────────────────────────────────────────
+function Step1Form({
+  onComplete,
+}: {
+  onComplete: (leadId: string, data: any) => void
+}) {
+  const [name, setName] = useState('')
+  const [email, setEmail] = useState('')
+  const [whatsapp, setWhatsapp] = useState('')
+  const [city, setCity] = useState('Bengaluru')
+  const [loading, setLoading] = useState(false)
+  const [err, setErr] = useState<string | null>(null)
+  const isSubmittingRef = useRef(false)
+
+  const totalAmount = BASE_PRICE
+
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setErr(null)
-    if (!name.trim() || name.length < 2) return setErr('Please enter your full name.')
-    if (!/^\S+@\S+\.\S+$/.test(email))    return setErr('Please enter a valid email address.')
-    if (!/^[+\d\s-]{7,20}$/.test(wa))     return setErr('Please enter a valid WhatsApp number.')
 
+    // ── Prevent double click rapid spam ──
+    if (isSubmittingRef.current) return
+
+    if (!name.trim()) { setErr('Please enter your full name.'); return }
+    if (!email.trim() || !/^\S+@\S+\.\S+$/.test(email)) { setErr('Please enter a valid email address.'); return }
+    
+    // ── STRICT INDIAN MOBILE NUMBER VALIDATION (10 digits starting with 6,7,8,9) ──
+    const digitsOnly = whatsapp.replace(/\D/g, '')
+    const cleanPhone = digitsOnly.length > 10 ? digitsOnly.slice(-10) : digitsOnly
+    if (!/^[6-9]\d{9}$/.test(cleanPhone)) {
+      setErr('Please enter a valid 10-digit Indian WhatsApp number (e.g. 9876543210).')
+      return
+    }
+
+    isSubmittingRef.current = true
     setLoading(true)
     try {
-      const params = new URLSearchParams(window.location.search)
-      let source = params.get('utm_source') || params.get('ref') || localStorage.getItem('lead_source')
-
-      if (!source && document.referrer) {
-        const ref = document.referrer.toLowerCase()
-        if (ref.includes('facebook') || ref.includes('fb.com') || ref.includes('instagram')) source = 'facebook'
-        else if (ref.includes('google')) source = 'google'
-        else if (ref.includes('tiktok')) source = 'tiktok'
-        else if (ref.includes('youtube')) source = 'youtube'
-      }
-
-      source = source || 'direct'
-
-      const utm_medium   = params.get('utm_medium')   || localStorage.getItem('lead_utm_medium')   || undefined
-      const utm_campaign = params.get('utm_campaign') || localStorage.getItem('lead_utm_campaign') || undefined
-      const utm_content  = params.get('utm_content')  || localStorage.getItem('lead_utm_content')  || undefined
-
-      const leadEventId = crypto.randomUUID()
+      trackMetaButtonClick('Continue to Payment', { value: totalAmount, currency: 'INR' })
 
       const res = await fetch('/api/leads', {
         method: 'POST',
@@ -117,588 +201,507 @@ function Step1({ onDone }: { onDone: (leadId: string, data: { name: string; emai
         body: JSON.stringify({
           name: name.trim(),
           email: email.trim().toLowerCase(),
-          whatsapp: wa.trim(),
-          source,
-          utm_medium,
-          utm_campaign,
-          utm_content,
-          gclid:  localStorage.getItem('lead_gclid')  || undefined,
-          fbclid: localStorage.getItem('lead_fbclid') || undefined,
-          ga_client_id: getGAClientId(),
-          eventId: leadEventId,
-        }),
+          whatsapp: cleanPhone,
+          city,
+          total_amount: totalAmount,
+          selected_upsells: [],
+          source: 'direct',
+        })
       })
+
       const data = await res.json()
-      if (!res.ok) throw new Error(data.error)
-
-      if (!data.existing) {
-        if (typeof window !== 'undefined' && (window as any).fbq) {
-          (window as any).fbq('track', 'Lead', {}, { eventID: leadEventId });
-        }
-        if (typeof window !== 'undefined' && (window as any).gtag) {
-          (window as any).gtag('event', 'generate_lead', {
-            value: COURSE_PRICE,
-            currency: 'BDT'
-          });
-        }
-
-        gtagSafe(
-          {
-            send_to: `${process.env.NEXT_PUBLIC_GA_ID}/${process.env.NEXT_PUBLIC_GA_LEAD_LABEL}`,
-            value: COURSE_PRICE,
-            currency: 'BDT',
-          },
-          { email: email.trim().toLowerCase(), phone: wa.trim() }
-        )
+      if (!res.ok) {
+        throw new Error(data.error || 'Failed to save details.')
       }
 
-      onDone(data.id, { name: name.trim(), email: email.trim().toLowerCase(), whatsapp: wa.trim() })
-    } catch (e: unknown) {
-      setErr(e instanceof Error ? e.message : 'Something went wrong. Please try again.')
+      onComplete(data.id, {
+        name: name.trim(),
+        email: email.trim().toLowerCase(),
+        whatsapp: cleanPhone,
+        city,
+        totalAmount,
+      })
+    } catch (e: any) {
+      setErr(e.message || 'Something went wrong.')
+    } finally {
+      isSubmittingRef.current = false
       setLoading(false)
     }
   }
 
   return (
-    <form onSubmit={submit} className="space-y-1">
-      <div className="inline-flex items-center gap-2 rounded-full border border-blue-200 bg-blue-50 px-3 py-1 text-[11px] font-bold uppercase tracking-wider text-blue-700">
-        <User className="h-3.5 w-3.5" /> Step 1 of 3 · আপনার তথ্য
+    <form onSubmit={handleSubmit} className="space-y-4">
+      <div>
+        <h1 className="font-['Sora'] text-xl font-bold text-slate-900 sm:text-2xl">
+          Complete Your Enrollment
+        </h1>
+        <p className="mt-1 text-xs text-slate-500">
+          Enter your details below to receive instant LMS course access.
+        </p>
       </div>
-      <h2 className="mt-2 font-['Sora'] text-2xl font-extrabold leading-tight sm:text-3xl"
-        style={{ background: 'linear-gradient(135deg,#2563eb,#06b6d4)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>
-        Reserve Your Seat.
-      </h2>
-      <p className="text-xs sm:text-sm font-semibold text-blue-600">কোর্সের অফার ফি মাত্র ৳{COURSE_PRICE.toLocaleString()} (রেগুলার ৳{Math.round(COURSE_PRICE * 2.5).toLocaleString()})</p>
 
-      <div className="mt-4 space-y-3">
-        <label className="block">
-          <span className="mb-1 block text-[11px] font-semibold uppercase tracking-wider text-slate-500">Full Name (পূর্ণ নাম) *</span>
-          <input type="text" value={name} onChange={e => setName(e.target.value)} maxLength={100}
-            placeholder="e.g. Tanvir Ahmed" required
-            className="w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm text-slate-800 outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100" />
-        </label>
+      <div className="space-y-3">
+        <div>
+          <label className="block text-xs font-bold text-slate-700 mb-1">Full Name</label>
+          <input
+            type="text"
+            required
+            value={name}
+            onChange={e => setName(e.target.value)}
+            placeholder="e.g. Rahul Sharma"
+            className="w-full rounded-xl border border-slate-200 bg-slate-50/50 px-3.5 py-2.5 text-sm outline-none transition focus:border-blue-500 focus:bg-white focus:ring-2 focus:ring-blue-100"
+          />
+        </div>
 
-        <label className="block">
-          <span className="mb-1 block text-[11px] font-semibold uppercase tracking-wider text-slate-500">Email Address (ইমেইল) *</span>
-          <input type="email" value={email} onChange={e => setEmail(e.target.value)} maxLength={255}
-            placeholder="you@example.com" required
-            className="w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm text-slate-800 outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100" />
-        </label>
+        <div>
+          <label className="block text-xs font-bold text-slate-700 mb-1">Email Address</label>
+          <input
+            type="email"
+            required
+            value={email}
+            onChange={e => setEmail(e.target.value)}
+            placeholder="e.g. rahul@gmail.com"
+            className="w-full rounded-xl border border-slate-200 bg-slate-50/50 px-3.5 py-2.5 text-sm outline-none transition focus:border-blue-500 focus:bg-white focus:ring-2 focus:ring-blue-100"
+          />
+          <p className="mt-1 text-[11px] text-slate-400">Course login credentials will be emailed here.</p>
+        </div>
 
-        <label className="block">
-          <span className="mb-1 block text-[11px] font-semibold uppercase tracking-wider text-slate-500">WhatsApp Number (হোয়াটসঅ্যাপ নম্বর) *</span>
-          <input type="tel" value={wa} onChange={e => setWa(e.target.value)} maxLength={20}
-            placeholder="01XXXXXXXXX" required
-            className="w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm text-slate-800 outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100" />
-        </label>
+        <div>
+          <label className="block text-xs font-bold text-slate-700 mb-1">WhatsApp Number</label>
+          <div className="flex">
+            <span className="inline-flex items-center rounded-l-xl border border-r-0 border-slate-200 bg-slate-100 px-3 text-xs font-bold text-slate-600">
+              🇮🇳 +91
+            </span>
+            <input
+              type="tel"
+              required
+              maxLength={10}
+              value={whatsapp}
+              onChange={e => setWhatsapp(e.target.value)}
+              placeholder="9876543210"
+              className="w-full rounded-r-xl border border-slate-200 bg-slate-50/50 px-3.5 py-2.5 text-sm outline-none transition focus:border-blue-500 focus:bg-white focus:ring-2 focus:ring-blue-100"
+            />
+          </div>
+          <p className="mt-1 text-[11px] text-slate-400">Valid 10-digit Indian mobile number</p>
+        </div>
+
+        <div>
+          <label className="block text-xs font-bold text-slate-700 mb-1">Your City</label>
+          <select
+            value={city}
+            onChange={e => setCity(e.target.value)}
+            className="w-full rounded-xl border border-slate-200 bg-slate-50/50 px-3.5 py-2.5 text-sm outline-none transition focus:border-blue-500 focus:bg-white focus:ring-2 focus:ring-blue-100"
+          >
+            {INDIAN_CITIES.map(c => (
+              <option key={c} value={c}>{c}</option>
+            ))}
+          </select>
+        </div>
       </div>
 
       {err && (
-        <div className="mt-3 flex items-start gap-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2.5 text-sm text-red-700">
-          <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" /> {err}
+        <div className="rounded-xl border border-red-200 bg-red-50 p-2.5 text-xs text-red-700 flex items-center gap-2">
+          <AlertCircle className="h-4 w-4 shrink-0" />
+          <span>{err}</span>
         </div>
       )}
 
-      <button type="submit" disabled={loading}
-        className="mt-5 inline-flex w-full items-center justify-center gap-2 rounded-full px-6 py-3.5 text-base font-semibold text-white shadow-[0_0_20px_rgba(37,99,235,0.3)] transition-transform hover:scale-[1.02] disabled:opacity-70 cursor-pointer"
-        style={{ background: 'linear-gradient(135deg,#2563eb,#06b6d4)' }}>
-        {loading
-          ? <><LoaderCircle className="h-4 w-4 animate-spin" /> Saving…</>
-          : <>Continue to Payment (পেমেন্ট করুন) <ArrowRight className="h-5 w-5" /></>}
+      {/* Submit Button */}
+      <button
+        type="submit"
+        disabled={loading}
+        className="btn-premium flex w-full items-center justify-between rounded-full p-2 pr-5 text-white shadow-md transition hover:scale-[1.01] active:scale-[0.99] disabled:opacity-70 cursor-pointer"
+      >
+        <div className="rounded-full bg-white/20 px-3.5 py-2 text-xs font-black backdrop-blur-md">
+          Total: ₹{totalAmount}
+        </div>
+        <div className="flex items-center gap-2 text-sm font-bold">
+          {loading ? (
+            <><LoaderCircle className="h-4 w-4 animate-spin" /> Saving Details...</>
+          ) : (
+            <>Continue to Payment <ArrowRight className="h-4 w-4" /></>
+          )}
+        </div>
       </button>
 
-      <p className="mt-3 flex items-center justify-center gap-1.5 text-xs text-slate-400">
-        <Lock className="h-3.5 w-3.5" /> আপনার তথ্য সম্পূর্ণ সুরক্ষিত — শুধুমাত্র কোর্স অ্যাক্সেস দিতে ব্যবহার হবে।
-      </p>
+      <div className="flex items-center justify-center gap-1.5 text-[11px] text-slate-400 text-center">
+        <Lock className="h-3 w-3 text-emerald-600" />
+        <span>Instant WhatsApp & Email Access • 100% Refund Guarantee</span>
+      </div>
     </form>
   )
 }
 
-// ── BankRow helper ───────────────────────────────────────────────────────
-function BankRow({ bank, title, num, colorClass = "text-slate-500" }: { bank: string; title?: string; num: string; colorClass?: string }) {
-  const [copied, setCopied] = useState(false)
-  const copy = () => {
-    navigator.clipboard?.writeText(num)
-    setCopied(true)
-    setTimeout(() => setCopied(false), 1500)
-  }
-  return (
-    <div className="flex items-center justify-between gap-3 border-b border-slate-200/60 py-4 last:border-0">
-      <div className="min-w-0">
-        <div className={`text-[11px] font-bold uppercase tracking-wider ${colorClass}`}>{bank}</div>
-        <div className="mt-1 text-xs font-semibold text-slate-700">Account Name: <span className="text-slate-900 font-bold">{title || 'The Patchee BD'}</span></div>
-        <div className="mt-1 text-base font-extrabold tracking-wide text-slate-900 sm:text-lg">{num}</div>
-      </div>
-      <button onClick={copy}
-        className="inline-flex shrink-0 items-center gap-1.5 rounded-full border border-pink-200 bg-white shadow-sm px-4 py-2 text-xs font-bold text-pink-700 transition hover:bg-pink-50 hover:border-pink-300 sm:px-3 sm:py-1.5 cursor-pointer">
-        {copied ? <><Check className="h-4 w-4 text-pink-600 sm:h-3.5 sm:w-3.5" /> Copied</> : <><Copy className="h-4 w-4 sm:h-3.5 sm:w-3.5" /> Copy Number</>}
-      </button>
-    </div>
-  )
-}
-
-// ── Step 2 — Payment ───────────────────────────────────────────────────────
-function Step2({
-  onContinue,
-  onBack,
-}: {
-  onContinue: () => void
-  onBack: () => void
-}) {
-  return (
-    <div>
-      <div className="inline-flex items-center gap-2 rounded-full border border-blue-200 bg-blue-50 px-3 py-1 text-[11px] font-bold uppercase tracking-wider text-blue-700">
-        <Wallet className="h-3.5 w-3.5" /> Step 2 of 3 · পেমেন্ট মাধ্যম
-      </div>
-      <h2 className="mt-3 font-['Sora'] text-2xl font-extrabold leading-tight sm:text-3xl"
-        style={{ background: 'linear-gradient(135deg,#2563eb,#06b6d4)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>
-        Send Your Payment.
-      </h2>
-      <p className="mt-2 flex items-center gap-1.5 text-xs sm:text-sm text-slate-600">
-        <Lock className="h-3.5 w-3.5 text-blue-600 shrink-0" />
-        নিচের বিকাশ নম্বরে <strong className="text-slate-900 mx-1">ঠিক ৳{COURSE_PRICE.toLocaleString()}</strong> &apos;Send Money&apos; করুন।
-      </p>
-
-      {/* Social Proof & Rating */}
-      <div className="mt-4 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-emerald-200/80 bg-emerald-50/60 p-3 text-xs text-slate-700">
-        <div className="flex items-center gap-1.5 font-medium">
-          <div className="flex text-amber-500">
-            <Star className="h-3.5 w-3.5 fill-amber-400" />
-            <Star className="h-3.5 w-3.5 fill-amber-400" />
-            <Star className="h-3.5 w-3.5 fill-amber-400" />
-            <Star className="h-3.5 w-3.5 fill-amber-400" />
-            <Star className="h-3.5 w-3.5 fill-amber-400" />
-          </div>
-          <span className="font-bold text-slate-900">4.9/5</span>
-          <span className="text-slate-600">(১,১০০+ স্টুডেন্ট এনরোলড)</span>
-        </div>
-      </div>
-
-      {/* bKash Payment Account Details */}
-      <div className="mt-4 rounded-2xl border border-pink-200 bg-gradient-to-br from-pink-50/50 to-white px-4 shadow-sm">
-        <BankRow bank="bKash (Send Money / Personal)" title="The Patchee BD" num={BKASH_NUMBER} colorClass="text-pink-600 font-extrabold" />
-      </div>
-
-      <button onClick={onContinue}
-        className="mt-5 inline-flex w-full items-center justify-center gap-2 rounded-full px-6 py-3.5 text-base font-semibold text-white shadow-[0_0_20px_rgba(37,99,235,0.3)] transition-transform hover:scale-[1.02] cursor-pointer"
-        style={{ background: 'linear-gradient(135deg,#2563eb,#06b6d4)' }}>
-        পেমেন্ট করেছি — স্ক্রিনশট দিন <ArrowRight className="h-5 w-5" />
-      </button>
-
-      {/* Direct WhatsApp Support */}
-      <div className="mt-4 rounded-2xl border border-emerald-200 bg-gradient-to-r from-emerald-50 to-teal-50 p-4 text-left shadow-sm">
-        <div className="flex items-start gap-3">
-          <div className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-emerald-600 text-white shadow-md">
-            <MessageCircle className="h-5 w-5" />
-          </div>
-          <div className="flex-1">
-            <h4 className="text-xs font-bold uppercase tracking-wider text-emerald-900">পেমেন্ট করতে সমস্যা হচ্ছে বা সহায়তা প্রয়োজন?</h4>
-            <p className="mt-0.5 text-xs text-slate-600">
-              আমাদের টিম WhatsApp-এ লাইভ আছে — যেকোনো প্রশ্ন বা সমস্যায় সরাসরি মেসেজ দিন।
-            </p>
-            <a
-              href={`https://wa.me/${WHATSAPP_SUPPORT}?text=${encodeURIComponent("Hi! I am on Step 2 (Payment) for the AI Bootcamp in Bangladesh and I need help completing my bKash payment.")}`}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="mt-2.5 inline-flex items-center gap-2 rounded-xl bg-emerald-600 px-3.5 py-2 text-xs font-bold text-white shadow-sm transition hover:bg-emerald-700"
-            >
-              <MessageCircle className="h-4 w-4" /> Facing Issue? Chat on WhatsApp
-            </a>
-          </div>
-        </div>
-      </div>
-
-      <button onClick={onBack}
-        className="mt-3 inline-flex w-full items-center justify-center gap-1.5 rounded-full border border-slate-200 py-2.5 text-xs font-medium text-slate-500 hover:bg-slate-50 cursor-pointer">
-        <ArrowLeft className="h-3.5 w-3.5" /> Back (আগের ধাপ)
-      </button>
-      <p className="mt-3 flex items-center justify-center gap-1.5 text-xs text-slate-400">
-        <Lock className="h-3.5 w-3.5" /> ১০০% সিকিউর · এককালীন পেমেন্ট · লাইফটাইম অ্যাক্সেস
-      </p>
-    </div>
-  )
-}
-
-// ── Step 3 — Upload Proof (with Gemini AI Verification) ────────────────────
-function Step3({
+// ─── Step 2: Payment (Razorpay) ──────────────────────────────────────────────
+function Step2Payment({
   leadId,
-  onBack,
   userData,
+  onBack,
+  onSuccess,
 }: {
   leadId: string
+  userData: { name: string; email: string; whatsapp: string; totalAmount: number }
   onBack: () => void
-  userData: { email: string; whatsapp: string }
+  onSuccess: (txId: string, link: string) => void
 }) {
-  const [file, setFile]           = useState<File | null>(null)
-  const [preview, setPreview]     = useState<string | null>(null)
-  const [verifying, setVerifying] = useState(false)
-  const [submitting, setSubmitting] = useState(false)
-  const [verified, setVerified]   = useState(false)
-  const [verifyResult, setVerifyResult] = useState<Record<string, unknown> | null>(null)
-  const [imageHash, setImageHash] = useState<string | null>(null)
-  const [err, setErr]             = useState<string | null>(null)
-  const [done, setDone]           = useState(false)
+  const [loading, setLoading] = useState(false)
+  const [err, setErr] = useState<string | null>(null)
+  const isPayingRef = useRef(false)
+  const cachedOrderRef = useRef<any>(null)
 
-  const handleFile = useCallback(async (f: File | null | undefined) => {
-    if (!f) return
-    setErr(null); setVerified(false); setVerifyResult(null); setImageHash(null); setPreview(null)
-
-    if (!f.type.startsWith('image/'))
-      return setErr('Please upload an image file (PNG, JPG, etc.)')
-    if (f.size > 5 * 1024 * 1024)
-      return setErr('Image must be under 5MB.')
-
-    setFile(f)
-    setPreview(URL.createObjectURL(f))
-    setVerifying(true)
-
-    try {
-      const base64 = await compressImageToBase64(f)
-      const res = await fetch('/api/verify-screenshot', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ fileBase64: base64, contentType: f.type, localTime: new Date().toString() }),
-      })
-      const data = await res.json()
-      setVerifyResult(data)
-      if (data.valid) {
-        setVerified(true)
-        setImageHash(data.imageHash)
-      } else {
-        setErr(data.reason ?? 'Screenshot could not be verified. Please upload a clear, unedited screenshot of your bKash payment receipt.')
+  useEffect(() => {
+    trackMetaEvent({
+      eventName: 'InitiateCheckout',
+      customData: {
+        value: userData.totalAmount,
+        currency: 'INR',
+        content_name: 'AI Video Bootcamp India',
+      },
+      userData: {
+        email: userData.email,
+        phone: userData.whatsapp,
+        name: userData.name,
       }
-    } catch {
-      setErr('Verification failed. Please try again or contact support.')
-    } finally {
-      setVerifying(false)
+    })
+    fireGA4Event('begin_checkout', { value: userData.totalAmount, currency: 'INR' })
+
+    if (IS_META_BOOST_MODE) {
+      trackMetaBoostBeacon('InitiateCheckout', {
+        value: userData.totalAmount,
+        currency: 'INR',
+        content_name: 'AI Video Bootcamp India',
+      })
     }
-  }, [])
+  }, [userData])
 
-  const submit = async () => {
-    if (!file || !verified) return
-    setSubmitting(true); setErr(null)
+  // Handle Razorpay Checkout
+  const handleRazorpayPayment = async () => {
+    // ── Prevent double click / multi-touch order spam ──
+    if (isPayingRef.current) return
+    isPayingRef.current = true
+
+    setLoading(true)
+    setErr(null)
 
     try {
-      const base64 = await compressImageToBase64(file)
-      const purchaseEventId = crypto.randomUUID()
+      trackMetaButtonClick('Razorpay Pay Click', { value: userData.totalAmount, currency: 'INR' })
 
-      const res = await fetch('/api/submit-payment', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          leadId,
-          fileBase64: base64,
-          contentType: 'image/jpeg',
-          fileName: file.name,
-          imageHash,
-          aiResult: verifyResult,
-          transactionId: (verifyResult as Record<string,unknown>)?.transactionId,
-          amount: (verifyResult as Record<string,unknown>)?.amount,
-          recipientNumber: (verifyResult as Record<string,unknown>)?.recipientNumber,
-          senderName: (verifyResult as Record<string,unknown>)?.senderName,
-          direction: (verifyResult as Record<string,unknown>)?.direction,
-          eventId: purchaseEventId,
-          gaClientId: getGAClientId(),
-        }),
-      })
-      const data = await res.json()
-      if (!res.ok) throw new Error(data.error)
+      // 1. Create or retrieve cached order to avoid orphan duplicate orders
+      let orderData = cachedOrderRef.current
+      if (!orderData) {
+        const orderRes = await fetch('/api/razorpay/create-order', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            leadId,
+            name: userData.name,
+            email: userData.email,
+          })
+        })
 
-      if (typeof window !== 'undefined' && (window as any).fbq) {
-        (window as any).fbq('track', 'Purchase', { value: COURSE_PRICE, currency: 'BDT' }, { eventID: purchaseEventId });
-      }
-      if (typeof window !== 'undefined' && (window as any).gtag) {
-        (window as any).gtag('event', 'purchase', {
-          transaction_id: (verifyResult as Record<string,unknown>)?.transactionId || purchaseEventId,
-          value: COURSE_PRICE,
-          currency: 'BDT',
-          items: [{
-            item_id: 'ai-video-bootcamp-bd',
-            item_name: 'AI Video Bootcamp Bangladesh',
-            price: COURSE_PRICE,
-            quantity: 1
-          }]
-        });
+        orderData = await orderRes.json()
+        if (!orderRes.ok) {
+          throw new Error(orderData.error || 'Failed to initialize Razorpay')
+        }
+        cachedOrderRef.current = orderData
       }
 
-      gtagSafe(
-        {
-          send_to: `${process.env.NEXT_PUBLIC_GA_ID}/${process.env.NEXT_PUBLIC_GA_PURCHASE_LABEL}`,
-          value: COURSE_PRICE,
-          currency: 'BDT',
-          transaction_id: (verifyResult as Record<string,unknown>)?.transactionId || purchaseEventId,
+      // If test demo mode or Razorpay window object is not yet loaded
+      if (orderData.isDemo || typeof window.Razorpay === 'undefined') {
+        const verifyRes = await fetch('/api/razorpay/verify-payment', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            leadId,
+            amount: userData.totalAmount,
+            razorpay_order_id: orderData.orderId,
+            razorpay_payment_id: `pay_demo_${Date.now()}`,
+            userData,
+            isDemo: true,
+          })
+        })
+        const verifyData = await verifyRes.json()
+        
+        // Client-side Purchase Tracking
+        trackMetaEvent({
+          eventName: 'Purchase',
+          eventId: verifyData.transactionId,
+          customData: {
+            value: userData.totalAmount,
+            currency: 'INR',
+            content_name: 'AI Video Bootcamp India',
+          },
+          userData: {
+            email: userData.email,
+            phone: userData.whatsapp,
+            name: userData.name,
+          }
+        })
+        fireGA4Event('purchase', {
+          transaction_id: verifyData.transactionId,
+          value: userData.totalAmount,
+          currency: 'INR',
+        })
+
+        onSuccess(verifyData.transactionId, verifyData.accessLink)
+        return
+      }
+
+      // Open Razorpay Modal
+      const options = {
+        key: orderData.keyId,
+        amount: orderData.amount,
+        currency: orderData.currency || 'INR',
+        name: 'AI Video Bootcamp India',
+        description: 'Course Enrollment & Lifetime Access',
+        order_id: orderData.orderId,
+        prefill: {
+          name: userData.name,
+          email: userData.email,
+          contact: userData.whatsapp,
         },
-        { email: userData.email, phone: userData.whatsapp }
-      )
+        theme: {
+          color: '#2563eb',
+        },
+        handler: async function (response: any) {
+          try {
+            const verifyRes = await fetch('/api/razorpay/verify-payment', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                razorpay_order_id: response.razorpay_order_id,
+                razorpay_payment_id: response.razorpay_payment_id,
+                razorpay_signature: response.razorpay_signature,
+                leadId,
+                amount: userData.totalAmount,
+                userData,
+              })
+            })
+            const verifyData = await verifyRes.json()
+            if (verifyRes.ok && verifyData.success) {
+              // Client-Side Purchase Tracking with 1:1 eventId deduplication
+              trackMetaEvent({
+                eventName: 'Purchase',
+                eventId: response.razorpay_payment_id,
+                customData: {
+                  value: userData.totalAmount,
+                  currency: 'INR',
+                  content_name: 'AI Video Bootcamp India',
+                },
+                userData: {
+                  email: userData.email,
+                  phone: userData.whatsapp,
+                  name: userData.name,
+                }
+              })
+              fireGA4Event('purchase', {
+                transaction_id: response.razorpay_payment_id,
+                value: userData.totalAmount,
+                currency: 'INR',
+              })
 
-      setDone(true)
-    } catch (e: unknown) {
-      setErr(e instanceof Error ? e.message : 'Upload failed. Please try again.')
-      setSubmitting(false)
+              onSuccess(verifyData.transactionId, verifyData.accessLink)
+            } else {
+              setErr(verifyData.error || 'Payment verification failed.')
+            }
+          } catch (e: any) {
+            setErr(e.message || 'Error verifying payment.')
+          } finally {
+            isPayingRef.current = false
+            setLoading(false)
+          }
+        },
+        modal: {
+          ondismiss: function () {
+            isPayingRef.current = false
+            setLoading(false)
+          }
+        }
+      }
+
+      const rzp = new window.Razorpay(options)
+      rzp.on('payment.failed', function (response: any) {
+        setErr(response.error?.description || 'Payment was declined. Please try another UPI app or card.')
+        isPayingRef.current = false
+        setLoading(false)
+      })
+      rzp.open()
+    } catch (e: any) {
+      setErr(e.message || 'Payment initiation failed.')
+      isPayingRef.current = false
+      setLoading(false)
     }
-  }
-
-  if (done) {
-    return (
-      <div className="text-center py-4">
-        <div className="mx-auto grid h-16 w-16 place-items-center rounded-full text-white shadow-[0_0_30px_rgba(37,99,235,0.4)]"
-          style={{ background: 'linear-gradient(135deg,#2563eb,#06b6d4)' }}>
-          <Check className="h-8 w-8" />
-        </div>
-        <h2 className="mt-4 font-['Sora'] text-2xl font-extrabold"
-          style={{ background: 'linear-gradient(135deg,#2563eb,#06b6d4)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>
-          You&apos;re In! (অভিনন্দন)
-        </h2>
-        <p className="mt-3 text-sm text-slate-800 font-semibold leading-relaxed max-w-sm mx-auto">
-          পেমেন্ট সফলভাবে ভেরিফাই হয়েছে! এখনই নিচের WhatsApp বাটনে মেসেজ দিন — আমরা সাথে সাথে আপনাকে LMS ও Skool কমিউনিটি অ্যাক্সেস লিংক পাঠিয়ে দেব।
-        </p>
-        <a href={`https://wa.me/${WHATSAPP_SUPPORT}?text=${encodeURIComponent(`Hi! I've submitted my bKash payment for the AI Bootcamp Bangladesh. My name is [Your Name]. Please confirm my enrollment.`)}`}
-          target="_blank" rel="noopener noreferrer"
-          className="mt-5 inline-flex w-full items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-blue-600 to-cyan-500 px-6 py-4 text-base font-semibold text-white shadow-lg transition-transform hover:scale-[1.02]">
-          <MessageCircle className="h-5 w-5" />
-          Message us on WhatsApp (অ্যাক্সেস নিন)
-        </a>
-      </div>
-    )
   }
 
   return (
-    <div>
-      <div className="inline-flex items-center gap-2 rounded-full border border-blue-200 bg-blue-50 px-3 py-1 text-[11px] font-bold uppercase tracking-wider text-blue-700">
-        <Upload className="h-3.5 w-3.5" /> Step 3 of 3 · স্ক্রিনশট দিন
+    <div className="space-y-4">
+      <div className="flex items-center justify-between">
+        <div>
+          <h2 className="font-['Sora'] text-xl font-bold text-slate-900">
+            Payment & Activation
+          </h2>
+          <p className="text-xs text-slate-500">Fast, instant activation via UPI or Cards.</p>
+        </div>
+        <button
+          onClick={onBack}
+          className="inline-flex items-center gap-1 rounded-full border border-slate-200 px-2.5 py-1 text-xs font-semibold text-slate-600 hover:bg-slate-50 cursor-pointer"
+        >
+          <ArrowLeft className="h-3 w-3" /> Edit Details
+        </button>
       </div>
-      <h2 className="mt-3 font-['Sora'] text-2xl font-extrabold leading-tight sm:text-3xl"
-        style={{ background: 'linear-gradient(135deg,#2563eb,#06b6d4)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>
-        Upload Payment Screenshot.
-      </h2>
-      <p className="mt-2 text-xs sm:text-sm text-slate-600">
-        আপনার ৳{COURSE_PRICE.toLocaleString()} বিকাশ পেমেন্ট ট্রানজ্যাকশনের একটি স্পষ্ট স্ক্রিনশট আপলোড করুন।
-      </p>
 
-      {/* Drop zone */}
-      <label className="mt-5 flex cursor-pointer flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed border-slate-200 bg-slate-50 px-4 py-6 text-center transition hover:border-blue-400 hover:bg-blue-50/40">
-        {preview
-          ? <img src={preview} alt="Preview" className="max-h-48 rounded-lg object-contain" />
-          : <>
-              <ImageIcon className="h-8 w-8 text-slate-300" />
-              <div className="text-sm font-medium text-slate-600">স্ক্রিনশট সিলেক্ট করতে ট্যাপ করুন</div>
-              <div className="text-xs text-slate-400">PNG বা JPG · সর্বোচ্চ 5MB</div>
-            </>}
-        <input type="file" accept="image/*" className="hidden" onChange={e => handleFile(e.target.files?.[0])} />
-      </label>
-
-      {file && <div className="mt-2 truncate text-xs text-slate-400">Selected: <span className="text-slate-600">{file.name}</span></div>}
-
-      {/* Verifying with Gemini AI */}
-      {verifying && (
-        <div className="mt-3 flex items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-medium text-slate-600">
-          <LoaderCircle className="h-4 w-4 animate-spin text-blue-600" /> Verifying bKash receipt with AI…
-        </div>
-      )}
-
-      {/* Verified */}
-      {verified && !verifying && (
-        <div className="mt-3 flex items-center gap-2 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-semibold text-emerald-700">
-          <CheckCircle className="h-4 w-4" /> Payment receipt verified ✓
-        </div>
-      )}
-
-      {/* Error */}
-      {err && !verifying && (
-        <div className="mt-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs font-medium text-red-700">
-          <div className="flex items-start gap-2">
-            <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
-            <span>{err}</span>
+      {/* Summary Box */}
+      <div className="rounded-2xl border border-blue-100 bg-blue-50/60 p-4">
+        <div className="flex items-center justify-between">
+          <div>
+            <div className="text-sm font-bold text-slate-800">{userData.name}</div>
+            <div className="text-xs text-slate-500">{userData.email} • +91 {userData.whatsapp}</div>
+            <div className="mt-1 text-[11px] font-semibold text-blue-700">Course: AI Video Bootcamp India (Lifetime Access)</div>
           </div>
-          <a href={`https://wa.me/${WHATSAPP_SUPPORT}?text=${encodeURIComponent('Hi! My bKash payment screenshot is being rejected by the AI verification. Can you please verify manually?')}`}
-            target="_blank" rel="noopener noreferrer"
-            className="mt-2 flex items-center gap-1.5 font-semibold text-emerald-600 hover:underline">
-            <MessageCircle className="h-3.5 w-3.5" />
-            সমস্যা হচ্ছে? WhatsApp-এ ম্যানুয়ালি ভেরিফাই করুন
-          </a>
+          <div className="text-right">
+            <div className="text-[10px] text-slate-400 uppercase font-semibold">Total Payable</div>
+            <div className="font-['Sora'] text-2xl font-black text-blue-700">₹{userData.totalAmount}</div>
+          </div>
+        </div>
+      </div>
+
+      {err && (
+        <div className="rounded-xl border border-red-200 bg-red-50 p-2.5 text-xs text-red-700 flex items-center gap-2">
+          <AlertCircle className="h-4 w-4 shrink-0" />
+          <span>{err}</span>
         </div>
       )}
 
-      <button onClick={submit} disabled={submitting || !verified}
-        className="mt-5 inline-flex w-full items-center justify-center gap-2 rounded-full px-6 py-3.5 text-base font-semibold text-white shadow-[0_0_20px_rgba(37,99,235,0.3)] transition-transform hover:scale-[1.02] disabled:opacity-50 disabled:hover:scale-100 cursor-pointer"
-        style={{ background: 'linear-gradient(135deg,#2563eb,#06b6d4)' }}>
-        {submitting
-          ? <><LoaderCircle className="h-4 w-4 animate-spin" /> Uploading…</>
-          : <><Upload className="h-4 w-4" /> Submit Payment Proof (জমা দিন)</>}
-      </button>
+      {/* Razorpay Showcase & Pay Button */}
+      <div className="space-y-4 pt-1">
+        <div className="rounded-2xl border border-slate-200 bg-slate-50/70 p-4 space-y-3">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2 text-xs font-bold text-slate-800">
+              <CheckCircle2 className="h-4 w-4 text-emerald-600" />
+              <span>Accepted Payment Methods:</span>
+            </div>
+            <span className="text-[10px] font-bold text-slate-500 bg-slate-200/70 px-2 py-0.5 rounded-md">
+              Powered by Razorpay
+            </span>
+          </div>
 
-      <a
-        href={`https://wa.me/${WHATSAPP_SUPPORT}?text=${encodeURIComponent("Hi! I am on Step 3 (Upload Proof) for the AI Bootcamp in Bangladesh and I need help uploading or verifying my payment receipt.")}`}
-        target="_blank"
-        rel="noopener noreferrer"
-        className="mt-2.5 flex items-center justify-center gap-2 rounded-full border border-emerald-200 bg-emerald-50/80 py-2.5 px-4 text-xs font-bold text-emerald-700 transition hover:bg-emerald-100/90"
-      >
-        <MessageCircle className="h-4 w-4 text-emerald-600" /> Facing issue uploading screenshot? Get help on WhatsApp
-      </a>
+          <div className="grid grid-cols-2 gap-2 text-xs text-slate-700">
+            <div className="flex items-center gap-2 bg-white p-2.5 rounded-xl border border-slate-200/70 font-medium shadow-2xs">
+              <span className="text-base">📱</span>
+              <div>
+                <div className="font-bold text-[11px] text-slate-900">UPI / QR</div>
+                <div className="text-[10px] text-slate-500">GPay, PhonePe, Paytm, CRED</div>
+              </div>
+            </div>
 
-      <button onClick={onBack}
-        className="mt-2.5 inline-flex w-full items-center justify-center gap-1.5 rounded-full border border-slate-200 py-2.5 text-xs font-medium text-slate-500 hover:bg-slate-50 cursor-pointer">
-        <ArrowLeft className="h-3.5 w-3.5" /> Back (আগের ধাপ)
-      </button>
+            <div className="flex items-center gap-2 bg-white p-2.5 rounded-xl border border-slate-200/70 font-medium shadow-2xs">
+              <span className="text-base">💳</span>
+              <div>
+                <div className="font-bold text-[11px] text-slate-900">Cards</div>
+                <div className="text-[10px] text-slate-500">RuPay, Visa, MasterCard</div>
+              </div>
+            </div>
 
-      <p className="mt-3 flex items-center justify-center gap-1.5 text-xs text-slate-400">
-        <Shield className="h-3.5 w-3.5" /> আপনার রিসিপ্ট এনক্রিপ্টেড এবং সম্পূর্ণ সুরক্ষিত।
+            <div className="flex items-center gap-2 bg-white p-2.5 rounded-xl border border-slate-200/70 font-medium shadow-2xs">
+              <span className="text-base">🏦</span>
+              <div>
+                <div className="font-bold text-[11px] text-slate-900">NetBanking</div>
+                <div className="text-[10px] text-slate-500">All 50+ Indian Banks</div>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2 bg-white p-2.5 rounded-xl border border-slate-200/70 font-medium shadow-2xs">
+              <span className="text-base">⚡</span>
+              <div>
+                <div className="font-bold text-[11px] text-slate-900">Wallets & More</div>
+                <div className="text-[10px] text-slate-500">Mobikwik, Amazon Pay, etc.</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <button
+          onClick={handleRazorpayPayment}
+          disabled={loading}
+          className="btn-premium flex w-full items-center justify-center gap-2 rounded-full py-4 text-base font-extrabold text-white shadow-lg transition hover:scale-[1.01] active:scale-[0.99] disabled:opacity-70 cursor-pointer"
+        >
+          {loading ? (
+            <><LoaderCircle className="h-5 w-5 animate-spin" /> Launching Razorpay Gateway...</>
+          ) : (
+            <>Pay ₹{userData.totalAmount} via Razorpay <ArrowRight className="h-5 w-5" /></>
+          )}
+        </button>
+      </div>
+
+      <p className="text-center text-[11px] text-slate-400">
+        Need assistance with payment? <a href={`https://wa.me/${WHATSAPP_SUPPORT}?text=Hi!%20Need%20help%20with%20payment%20enrollment.`} target="_blank" rel="noopener noreferrer" className="text-blue-600 underline">Chat on WhatsApp</a>
       </p>
     </div>
   )
 }
 
-// ── Util: Compress Image ───────────────────────────────────────────────────
-function compressImageToBase64(file: File, maxWidth = 1200, quality = 0.7): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader()
-    reader.onload = (e) => {
-      const img = new Image()
-      img.onload = () => {
-        const canvas = document.createElement('canvas')
-        let width = img.width
-        let height = img.height
-        if (width > maxWidth) {
-          height = Math.round((height * maxWidth) / width)
-          width = maxWidth
-        }
-        canvas.width = width
-        canvas.height = height
-        const ctx = canvas.getContext('2d')
-        if (!ctx) return reject('No canvas context')
-        ctx.drawImage(img, 0, 0, width, height)
-        const dataUrl = canvas.toDataURL('image/jpeg', quality)
-        resolve(dataUrl.split(',')[1])
-      }
-      img.onerror = reject
-      img.src = e.target?.result as string
-    }
-    reader.onerror = reject
-    reader.readAsDataURL(file)
-  })
-}
-
-// ── Main Enroll Page ───────────────────────────────────────────────────────
-export default function EnrollPage() {
-  const [step, setStep]   = useState(1)
-  const [leadId, setLeadId] = useState<string | null>(null)
-  const [userData, setUserDataState] = useState<{ email: string; whatsapp: string }>({ email: '', whatsapp: '' })
-
-  useEffect(() => {
-    if (typeof window !== 'undefined') {
-      if ((window as any).fbq) {
-        (window as any).fbq('track', 'InitiateCheckout')
-      }
-      const params = new URLSearchParams(window.location.search)
-      const utm = params.get('utm_source') || params.get('ref')
-      if (utm) {
-        localStorage.setItem('lead_source', utm.toLowerCase())
-      } else if (!localStorage.getItem('lead_source') && document.referrer) {
-        const ref = document.referrer.toLowerCase()
-        if (ref.includes('facebook') || ref.includes('fb.com') || ref.includes('instagram')) localStorage.setItem('lead_source', 'facebook')
-        else if (ref.includes('google')) localStorage.setItem('lead_source', 'google')
-      }
-
-      const utmMedium = params.get('utm_medium')
-      if (utmMedium) localStorage.setItem('lead_utm_medium', utmMedium)
-
-      const utmCampaign = params.get('utm_campaign')
-      if (utmCampaign) localStorage.setItem('lead_utm_campaign', utmCampaign)
-
-      const utmContent = params.get('utm_content')
-      if (utmContent) localStorage.setItem('lead_utm_content', utmContent)
-
-      const gclid = params.get('gclid')
-      if (gclid && !localStorage.getItem('lead_gclid')) {
-        localStorage.setItem('lead_gclid', gclid)
-        if (!localStorage.getItem('lead_source')) localStorage.setItem('lead_source', 'google')
-      }
-
-      const fbclid = params.get('fbclid')
-      if (fbclid && !localStorage.getItem('lead_fbclid')) {
-        localStorage.setItem('lead_fbclid', fbclid)
-        if (!localStorage.getItem('lead_source')) localStorage.setItem('lead_source', 'facebook')
-      }
-    }
-  }, [])
-
+// ─── Step 3: Success Screen ──────────────────────────────────────────────────
+function SuccessView({
+  transactionId,
+  accessLink,
+  userData,
+}: {
+  transactionId: string
+  accessLink: string
+  userData: { name: string; email: string; whatsapp: string; totalAmount: number }
+}) {
   return (
-    <div className="min-h-screen bg-[#fafafa] text-slate-800">
-      {/* Header */}
-      <header className="sticky top-0 z-40 border-b border-slate-200/60 bg-white/85 backdrop-blur-xl">
-        <div className="mx-auto flex max-w-7xl items-center justify-between gap-3 px-4 py-3 sm:px-6">
-          <Link href="/" className="flex items-center gap-2.5">
-            <div className="grid h-9 w-9 place-items-center rounded-xl font-bold text-sm text-white" style={{ background: 'linear-gradient(135deg,#2563eb,#06b6d4)' }}>AI</div>
-            <div className="leading-tight">
-              <div className="text-sm font-bold tracking-tight sm:text-base">AI Bootcamp</div>
-              <div className="-mt-0.5 text-[10px] font-semibold uppercase tracking-[0.18em] text-blue-600">Bangladesh</div>
-            </div>
-          </Link>
-          <Link href="/" className="inline-flex items-center gap-1.5 rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-600 hover:bg-slate-50">
-            <ArrowLeft className="h-4 w-4" /> Back to Course
-          </Link>
+    <div className="rounded-3xl border border-emerald-200 bg-white p-6 sm:p-10 text-center shadow-lg space-y-5">
+      <div className="mx-auto grid h-16 w-16 place-items-center rounded-full bg-emerald-100 text-emerald-600 shadow-sm animate-bounce">
+        <CheckCircle2 className="h-8 w-8 stroke-[2.5]" />
+      </div>
+
+      <div>
+        <span className="inline-block rounded-full bg-emerald-50 px-3 py-1 text-xs font-bold text-emerald-700">
+          Payment Verified Successfully
+        </span>
+        <h1 className="mt-2 font-['Sora'] text-2xl font-extrabold text-slate-900 sm:text-3xl">
+          Welcome to the Bootcamp, {userData.name.split(' ')[0]}! 🎉
+        </h1>
+        <p className="mt-2 text-xs text-slate-500 max-w-md mx-auto">
+          Your enrollment for <span className="font-semibold text-slate-800">AI Video Bootcamp India</span> has been confirmed.
+        </p>
+      </div>
+
+      <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 text-left text-xs space-y-2">
+        <div className="flex justify-between border-b border-slate-200/60 pb-2">
+          <span className="text-slate-500">Transaction ID</span>
+          <span className="font-mono font-bold text-slate-800">{transactionId}</span>
         </div>
-      </header>
-
-      <main className="mx-auto max-w-lg px-4 py-4 sm:px-6 sm:py-8">
-        {/* Checkout card */}
-        <div className="overflow-hidden rounded-2xl border border-blue-200/60 bg-white shadow-[0_0_40px_rgba(37,99,235,0.1)]">
-          {/* Card header bar */}
-          <div className="flex items-center justify-between border-b border-slate-100 bg-slate-50/80 px-4 py-2.5">
-            <div className="flex items-center gap-1.5">
-              <span className="h-2.5 w-2.5 rounded-full bg-blue-500/80" />
-              <span className="h-2.5 w-2.5 rounded-full bg-amber-400" />
-              <span className="h-2.5 w-2.5 rounded-full bg-cyan-400" />
-            </div>
-            <div className="text-xs font-medium text-slate-500">Enroll · Step {step} of 3</div>
-            <div className="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wider text-blue-600">
-              <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-blue-600" /> Live
-            </div>
-          </div>
-
-          <div className="p-4 sm:p-6">
-            <StepBar step={step} />
-
-            {step === 1 && (
-              <Step1 onDone={(id, data) => {
-                setLeadId(id)
-                setUserDataState({ email: data.email, whatsapp: data.whatsapp })
-                setStep(2)
-              }} />
-            )}
-            {step === 2 && (
-              <Step2
-                onContinue={() => setStep(3)}
-                onBack={() => setStep(1)}
-              />
-            )}
-            {step === 3 && leadId && (
-              <Step3 leadId={leadId} onBack={() => setStep(2)} userData={userData} />
-            )}
-          </div>
+        <div className="flex justify-between border-b border-slate-200/60 pb-2">
+          <span className="text-slate-500">Amount Paid</span>
+          <span className="font-bold text-emerald-600">₹{userData.totalAmount}</span>
         </div>
-
-        {/* FAQ teaser */}
-        <div className="mt-6 rounded-xl border border-slate-200 bg-white p-4 text-sm text-slate-600">
-          <div className="font-semibold text-slate-800">Questions?</div>
-          <p className="mt-1 text-xs">
-            Email us at <a href="mailto:aivideoboootcamp@gmail.com" className="font-semibold text-blue-600 hover:underline">aivideoboootcamp@gmail.com</a>, WhatsApp us at{' '}
-            <a href={`https://wa.me/${WHATSAPP_SUPPORT}`} target="_blank" rel="noopener noreferrer"
-              className="font-semibold text-blue-600 hover:underline">
-              +{WHATSAPP_SUPPORT}
-            </a>
-            {' '}or see the <Link href="/#reviews" className="font-semibold text-blue-600 hover:underline">FAQs on the homepage</Link>.
-          </p>
+        <div className="flex justify-between">
+          <span className="text-slate-500">Registered Email</span>
+          <span className="font-semibold text-slate-800">{userData.email}</span>
         </div>
-      </main>
+      </div>
 
-      {/* WhatsApp floating button */}
-      <a href={`https://wa.me/${WHATSAPP_SUPPORT}`} target="_blank" rel="noopener noreferrer"
-        className="fixed bottom-4 right-4 z-40 flex h-12 w-12 items-center justify-center rounded-full bg-[#25D366] text-white shadow-lg transition-transform hover:scale-110">
-        <svg viewBox="0 0 24 24" fill="currentColor" className="h-6 w-6">
-          <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 5.834h-.004c-1.271-.05-2.521-.349-3.67-.877l-.263-.119-2.727.716.73-2.66-.172-.273a7.53 7.53 0 0 1-1.16-4.03c0-4.188 3.406-7.592 7.594-7.592 4.188 0 7.592 3.404 7.592 7.592 0 4.188-3.404 7.593-7.592 7.593m6.743-13.831c-1.807-1.808-4.209-2.804-6.765-2.804-5.27 0-9.56 4.29-9.56 9.56 0 1.683.439 3.321 1.271 4.762l-1.351 4.94 5.051-1.324a9.55 9.55 0 0 0 4.589 1.173c5.27 0 9.56-4.29 9.56-9.56 0-2.556-.996-4.958-2.795-6.767" />
-        </svg>
-      </a>
+      <div className="space-y-3 pt-2">
+        <a
+          href={accessLink}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="btn-premium flex w-full items-center justify-center gap-2 rounded-full py-4 text-sm font-extrabold text-white shadow-lg transition hover:scale-[1.01]"
+        >
+          Access LMS Course Area <ChevronRight className="h-4 w-4" />
+        </a>
+
+        <a
+          href={`https://wa.me/${WHATSAPP_SUPPORT}?text=${encodeURIComponent(`Hi! I just enrolled in AI Video Bootcamp India. Transaction: ${transactionId}. Name: ${userData.name}. Please add me to the private student group!`)}`}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="flex w-full items-center justify-center gap-2 rounded-full border border-emerald-500 bg-emerald-50 py-3 text-xs font-bold text-emerald-700 hover:bg-emerald-100 transition"
+        >
+          <span>Join Private Student WhatsApp Group</span>
+        </a>
+      </div>
     </div>
   )
 }

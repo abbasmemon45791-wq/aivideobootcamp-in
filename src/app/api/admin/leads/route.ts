@@ -1,10 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase'
-import crypto from 'crypto'
 
-const hashData = (data: string) => crypto.createHash('sha256').update(data).digest('hex')
-
-// ── Admin auth ─────────────────────────────────────────────────────────────
 function getAdminToken(req: NextRequest) {
   return req.headers.get('x-admin-token') ??
          req.cookies.get('admin_token')?.value
@@ -31,7 +27,7 @@ export async function GET(req: NextRequest) {
   const url = new URL(req.url)
   const status    = url.searchParams.get('status')
   const source    = url.searchParams.get('source')
-  const site      = url.searchParams.get('site') || 'techpulse-bd'
+  const site      = url.searchParams.get('site') || process.env.NEXT_PUBLIC_SITE_NAME || 'techpulse-in'
   const search    = url.searchParams.get('search')
   const startDate = url.searchParams.get('startDate')
   const endDate   = url.searchParams.get('endDate')
@@ -71,20 +67,27 @@ export async function GET(req: NextRequest) {
   }
 
   const { data, error, count } = await query
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  if (error) {
+    console.error('[GET /api/admin/leads]', error)
+    return NextResponse.json({ error: error.message }, { status: 500 })
+  }
 
-  return NextResponse.json({ leads: data, total: count, page, limit })
+  return NextResponse.json({
+    leads: data ?? [],
+    total: count ?? 0,
+    page,
+    totalPages: Math.ceil((count ?? 0) / limit),
+  })
 }
 
-// ── POST: approve or reject ────────────────────────────────────────────────
-export async function POST(req: NextRequest) {
+// ── PATCH: approve or reject lead / payment ────────────────────────────────
+export async function PATCH(req: NextRequest) {
   if (!(await verifyAdmin(req))) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
   const body = await req.json()
   const { leadId, paymentId, action, note } = body
-  // action: 'approve' | 'reject'
 
   if (!leadId || !action) {
     return NextResponse.json({ error: 'Missing leadId or action.' }, { status: 400 })
@@ -92,41 +95,34 @@ export async function POST(req: NextRequest) {
 
   const newLeadStatus = action === 'approve' ? 'approved' : 'rejected'
 
-  // Fetch lead for conversion data
   const { data: lead } = await supabaseAdmin
     .from('leads')
     .select('*')
     .eq('id', leadId)
     .maybeSingle()
 
-  const wasAlreadyApproved = lead?.status === 'approved'
-
-  // Update lead status
   await supabaseAdmin
     .from('leads')
     .update({ status: newLeadStatus })
     .eq('id', leadId)
 
-  // Update or create payment record
   let currentPaymentId = paymentId
   if (!currentPaymentId) {
-    const { data: existingPayment } = await supabaseAdmin
+    const { data: latestPayment } = await supabaseAdmin
       .from('payments')
       .select('id')
       .eq('lead_id', leadId)
+      .order('submitted_at', { ascending: false })
+      .limit(1)
       .maybeSingle()
-
-    if (existingPayment) {
-      currentPaymentId = existingPayment.id
+    if (latestPayment) {
+      currentPaymentId = latestPayment.id
     }
   }
 
-  let coursePrice = (process.env.COURSE_PRICE && process.env.COURSE_PRICE !== '1499' ? Number(process.env.COURSE_PRICE) : 799)
+  let coursePrice = 499
+
   if (currentPaymentId) {
-    const { data: p } = await supabaseAdmin.from('payments').select('amount').eq('id', currentPaymentId).maybeSingle()
-    if (p?.amount && Number(p.amount) > 0) {
-      coursePrice = Number(p.amount)
-    }
     await supabaseAdmin
       .from('payments')
       .update({
@@ -137,7 +133,8 @@ export async function POST(req: NextRequest) {
       })
       .eq('id', currentPaymentId)
   } else if (action === 'approve') {
-    coursePrice = (process.env.COURSE_PRICE && process.env.COURSE_PRICE !== '1499' ? Number(process.env.COURSE_PRICE) : 799)
+    const match = lead?.utm_content?.match(/\[amount:(\d+)\]/)
+    coursePrice = match ? Number(match[1]) : (Number(process.env.COURSE_PRICE) || 499)
     await supabaseAdmin
       .from('payments')
       .insert({
@@ -150,9 +147,6 @@ export async function POST(req: NextRequest) {
         ai_verified: false,
       })
   }
-
-  // Note: Purchase event is fired when the user uploads payment proof on Step 3.
-  // No conversion event is fired here to avoid duplicate purchase reporting.
 
   return NextResponse.json({ success: true, status: newLeadStatus })
 }

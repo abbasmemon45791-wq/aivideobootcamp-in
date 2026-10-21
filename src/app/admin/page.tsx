@@ -29,9 +29,10 @@ const parseUA = (ua?: string) => {
 
 const formatWhatsAppNumber = (num: string) => {
   let cleaned = num.replace(/\D/g, '')
-  // Bangladesh: local numbers start with 0 → replace with 880
   if (cleaned.startsWith('0')) {
-    cleaned = '880' + cleaned.substring(1)
+    cleaned = '91' + cleaned.substring(1)
+  } else if (cleaned.length === 10 && /^[6-9]/.test(cleaned)) {
+    cleaned = '91' + cleaned
   }
   return cleaned
 }
@@ -186,8 +187,8 @@ function LeadRow({ lead, token, onUpdate, isSelected, onToggleSelect }: { lead: 
             <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-semibold ${badge.color}`}>
               {badge.icon} {badge.label}
             </span>
-            <span className="inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[10px] font-bold bg-pink-50 text-pink-700 border border-pink-200">
-              bKash · ৳799
+            <span className="inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[10px] font-bold bg-blue-50 text-blue-700 border border-blue-200">
+              ₹{payment?.amount ?? 499}
             </span>
           </div>
           <div className="mt-1 flex flex-wrap gap-x-2 gap-y-1 text-xs text-slate-500">
@@ -203,7 +204,7 @@ function LeadRow({ lead, token, onUpdate, isSelected, onToggleSelect }: { lead: 
           </div>
           {payment && (
             <div className="mt-1 flex flex-wrap gap-x-3 gap-y-0.5 text-xs">
-              {payment.amount && <span className="text-slate-900 font-bold">Paid: ৳{payment.amount.toLocaleString()}</span>}
+              {payment.amount && <span className="text-slate-900 font-bold">Paid: ₹{payment.amount.toLocaleString()}</span>}
               {payment.recipient_number && <span className="text-slate-500">→ {payment.recipient_number}</span>}
               {payment.transaction_id && <span className="font-mono text-slate-400">{payment.transaction_id}</span>}
               {payment.ai_verified !== undefined && (
@@ -282,7 +283,7 @@ function LeadRow({ lead, token, onUpdate, isSelected, onToggleSelect }: { lead: 
               <div>
                 <div className="font-semibold text-slate-500 uppercase tracking-wider text-[10px] mb-1">Payment Info</div>
                 <div className="space-y-0.5 text-slate-700">
-                  <div><span className="text-slate-400">Amount:</span> ৳{payment.amount?.toLocaleString() ?? '—'}</div>
+                  <div><span className="text-slate-400">Amount:</span> ₹{payment.amount?.toLocaleString() ?? '—'}</div>
                   <div><span className="text-slate-400">Recipient:</span> {payment.recipient_number ?? '—'}</div>
                   <div><span className="text-slate-400">Sender:</span> {payment.sender_name ?? '—'}</div>
                   <div><span className="text-slate-400">TX ID:</span> <span className="font-mono">{payment.transaction_id ?? '—'}</span></div>
@@ -454,9 +455,9 @@ function Dashboard({ token, onLogout }: { token: string; onLogout: () => void })
 
   const exportCSV = () => {
     const rows = [
-      ['Name', 'Email', 'WhatsApp', 'Site', 'Source', 'Medium', 'Campaign', 'Content', 'Status', 'Amount (BDT)', 'TX ID', 'Enrolled'],
+      ['Name', 'Email', 'WhatsApp', 'Site', 'Source', 'Medium', 'Campaign', 'Content', 'Status', 'Amount (INR)', 'TX ID', 'Enrolled'],
       ...leads.map(l => [
-        l.name, l.email, l.whatsapp, l.site ?? 'techpulse-bd', l.source ?? 'direct',
+        l.name, l.email, l.whatsapp, l.site ?? 'techpulse-in', l.source ?? 'direct',
         (l as any).utm_medium ?? '', (l as any).utm_campaign ?? '', (l as any).utm_content ?? '',
         l.status, l.payments?.[0]?.amount ?? '', l.payments?.[0]?.transaction_id ?? '',
         new Date(l.created_at).toLocaleDateString('en-GB'),
@@ -464,7 +465,7 @@ function Dashboard({ token, onLogout }: { token: string; onLogout: () => void })
     ]
     const csv = rows.map(r => r.map(v => `"${String(v).replace(/"/g, '""')}"`).join(',')).join('\n')
     const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }))
-    a.download = `leads-bd-${new Date().toISOString().slice(0,10)}.csv`; a.click()
+    a.download = `leads-india-${new Date().toISOString().slice(0,10)}.csv`; a.click()
   }
 
   return (
@@ -473,11 +474,10 @@ function Dashboard({ token, onLogout }: { token: string; onLogout: () => void })
       <header className="sticky top-0 z-10 border-b border-slate-200 bg-white/90 backdrop-blur">
         <div className="mx-auto flex max-w-7xl items-center justify-between gap-3 px-4 py-3 sm:px-6">
           <div className="flex items-center gap-3">
-            <div className="grid h-9 w-9 place-items-center rounded-xl font-bold text-sm text-white"
-              style={{ background: 'linear-gradient(135deg,#2563eb,#06b6d4)' }}>AI</div>
+            <div className="grid h-9 w-9 place-items-center rounded-xl font-bold text-sm text-white gradient-brand">AI</div>
             <div>
               <div className="text-sm font-bold text-slate-900">Admin Dashboard</div>
-              <div className="text-[11px] font-semibold text-blue-600">AI Video Bootcamp Bangladesh (bKash · ৳799)</div>
+              <div className="text-[11px] font-semibold text-blue-600">AI Video Bootcamp India (₹499 • Razorpay & UPI)</div>
             </div>
           </div>
           <div className="flex items-center gap-2">
@@ -505,7 +505,7 @@ function Dashboard({ token, onLogout }: { token: string; onLogout: () => void })
             { label: 'Pending Review', val: submitted, icon: <Clock className="h-5 w-5 text-amber-600" />, bg: 'bg-amber-50' },
             { label: 'Approved', val: approved, icon: <CheckCircle className="h-5 w-5 text-emerald-600" />, bg: 'bg-emerald-50' },
             { label: 'Rejected', val: rejected, icon: <XCircle className="h-5 w-5 text-red-600" />, bg: 'bg-red-50' },
-            { label: 'Revenue (Actual)', val: `৳${(funnel.totalRevenue ?? 0).toLocaleString()}`, icon: <TrendingUp className="h-5 w-5 text-purple-600" />, bg: 'bg-purple-50' },
+            { label: 'Revenue (Actual)', val: `₹${(funnel.totalRevenue ?? 0).toLocaleString()}`, icon: <TrendingUp className="h-5 w-5 text-purple-600" />, bg: 'bg-purple-50' },
           ].map((s, i) => (
             <div key={i} className="flex items-center gap-3 rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
               <div className={`grid h-9 w-9 shrink-0 place-items-center rounded-lg ${s.bg}`}>{s.icon}</div>

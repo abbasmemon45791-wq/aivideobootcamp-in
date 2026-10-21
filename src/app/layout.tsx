@@ -1,35 +1,37 @@
 import type { Metadata } from 'next'
 import Script from 'next/script'
-import { Inter, Sora, Plus_Jakarta_Sans, Hind_Siliguri } from 'next/font/google'
+import { Inter, Sora, Plus_Jakarta_Sans } from 'next/font/google'
+import MetaRouteTracker from '@/components/MetaRouteTracker'
 import './globals.css'
 
 const inter = Inter({ subsets: ['latin'], variable: '--font-inter' })
-const sora = Sora({ subsets: ['latin'], variable: '--font-sora', weight: ['400','600','700','800'] })
-const jakarta = Plus_Jakarta_Sans({ subsets: ['latin'], variable: '--font-jakarta', weight: ['500','600','700'] })
-const hind = Hind_Siliguri({ subsets: ['bengali', 'latin'], weight: ['400', '500', '600', '700'], variable: '--font-hind' })
+const sora = Sora({ subsets: ['latin'], variable: '--font-sora', weight: ['400', '600', '700', '800'] })
+const jakarta = Plus_Jakarta_Sans({ subsets: ['latin'], variable: '--font-jakarta', weight: ['500', '600', '700'] })
 
 export const metadata: Metadata = {
-  title: 'AI Video Bootcamp Bangladesh — Practical AI Content Creation Course',
-  description: 'Learn practical AI content creation in Bangladesh. Master AI video generation, prompt engineering, product photography, and creative workflows. 10 structured modules.',
-  metadataBase: new URL(process.env.NEXT_PUBLIC_SITE_URL ?? 'https://yourdomain.com.bd'),
+  title: 'AI Video Bootcamp India — Master AI Content & Video Creation',
+  description: 'India\'s premier practical AI video & content creation course. Master Midjourney, Kling, Runway, ElevenLabs & CapCut. Create viral ads, product shoots & land freelance clients. Just ₹499.',
+  metadataBase: new URL(process.env.NEXT_PUBLIC_SITE_URL ?? 'https://aivideobootcamp-in.vercel.app'),
   openGraph: {
     type: 'website',
-    title: 'AI Video Bootcamp Bangladesh',
-    description: 'Learn practical AI video generation and creative workflows. BDT ৳799 one-time payment. Lifetime access.',
+    title: 'AI Video Bootcamp India — Master Practical AI Content Creation',
+    description: 'Learn practical AI video generation, prompt engineering, and client acquisition. ₹499 one-time payment. Lifetime access.',
   },
   twitter: { card: 'summary_large_image' },
 }
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
-  // Guard against accidental Pakistan tag bleed-through (G-Y2SZLNREPD)
-  const ga4Id =
-    process.env.NEXT_PUBLIC_GA4_ID && process.env.NEXT_PUBLIC_GA4_ID !== 'G-Y2SZLNREPD'
-      ? process.env.NEXT_PUBLIC_GA4_ID
-      : 'G-ZGRD9GQF40'
+  const ga4Id = process.env.NEXT_PUBLIC_GA4_ID || 'G-ZGRD9GQF40'
 
   return (
-    <html lang="bn" className={`${inter.variable} ${sora.variable} ${jakarta.variable} ${hind.variable}`}>
-      <body className="font-[var(--font-hind),Inter,sans-serif] antialiased">
+    <html lang="en" className={`${inter.variable} ${sora.variable} ${jakarta.variable}`}>
+      <body className="font-['Plus_Jakarta_Sans',Inter,sans-serif] antialiased bg-[#fafafa] text-slate-900">
+        {/* Razorpay Checkout Script */}
+        <Script
+          src="https://checkout.razorpay.com/v1/checkout.js"
+          strategy="lazyOnload"
+        />
+
         {/* Meta Pixel (Dual-Pixel: Primary & Secondary / Backup) */}
         <Script id="meta-pixel" strategy="afterInteractive">
           {`
@@ -48,21 +50,26 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         </Script>
 
         {/* Google Analytics 4 (GA4) */}
-        <Script
-          src={`https://www.googletagmanager.com/gtag/js?id=${ga4Id}`}
-          strategy="afterInteractive"
-        />
-        <Script id="ga4-init" strategy="afterInteractive">
-          {`
-            window.dataLayer = window.dataLayer || [];
-            function gtag(){dataLayer.push(arguments);}
-            gtag('js', new Date());
-            gtag('config', '${ga4Id}', {
-              send_page_view: true
-            });
-          `}
-        </Script>
+        {ga4Id && (
+          <>
+            <Script
+              src={`https://www.googletagmanager.com/gtag/js?id=${ga4Id}`}
+              strategy="afterInteractive"
+            />
+            <Script id="ga4-init" strategy="afterInteractive">
+              {`
+                window.dataLayer = window.dataLayer || [];
+                function gtag(){dataLayer.push(arguments);}
+                gtag('js', new Date());
+                gtag('config', '${ga4Id}', {
+                  send_page_view: true
+                });
+              `}
+            </Script>
+          </>
+        )}
 
+        <MetaRouteTracker />
         {children}
       </body>
     </html>

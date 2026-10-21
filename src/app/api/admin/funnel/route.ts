@@ -20,7 +20,7 @@ export async function GET(req: NextRequest) {
     const startDate = searchParams.get('startDate')
     const endDate = searchParams.get('endDate')
     const source = searchParams.get('source')
-    const site = searchParams.get('site') || 'techpulse-bd'
+    const site = searchParams.get('site') || process.env.NEXT_PUBLIC_SITE_NAME || 'techpulse-in'
 
     let query = supabaseAdmin
       .from('leads')
@@ -65,7 +65,7 @@ export async function GET(req: NextRequest) {
       if (p?.amount && Number(p.amount) > 0) {
         totalRevenue += Number(p.amount)
       } else {
-        totalRevenue += (process.env.COURSE_PRICE && process.env.COURSE_PRICE !== '1499' ? Number(process.env.COURSE_PRICE) : 799)
+        totalRevenue += (Number(process.env.COURSE_PRICE) || 499)
       }
     })
 
