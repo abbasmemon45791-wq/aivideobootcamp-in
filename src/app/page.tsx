@@ -15,7 +15,7 @@ import { trackMetaButtonClick } from '@/lib/meta-tracking'
 const ENROLLED = 1248
 const PRICE = 10
 const ORIGINAL_PRICE = 2999
-const WHATSAPP_NUMBER = process.env.NEXT_PUBLIC_WHATSAPP_NUMBER ?? '919876543210'
+const WHATSAPP_NUMBER = process.env.NEXT_PUBLIC_WHATSAPP_NUMBER ?? '917415562532'
 const SUPPORT_EMAIL = 'support@aivideobootcamp.in'
 
 const MODULES = [

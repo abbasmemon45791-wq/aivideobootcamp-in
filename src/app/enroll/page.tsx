@@ -18,7 +18,7 @@ declare global {
 
 const BASE_PRICE = 10
 
-const WHATSAPP_SUPPORT = process.env.NEXT_PUBLIC_WHATSAPP_SUPPORT ?? '919876543210'
+const WHATSAPP_SUPPORT = process.env.NEXT_PUBLIC_WHATSAPP_SUPPORT ?? '917415562532'
 
 const INDIAN_CITIES = [
   'Bengaluru', 'Mumbai', 'Delhi NCR', 'Hyderabad', 'Pune',
