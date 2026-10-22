@@ -7,8 +7,8 @@ export async function POST(req: NextRequest) {
     const { leadId, name, email } = body
 
     // ── SECURITY: Hardcode official course price on server to prevent price tampering ──
-    const COURSE_PRICE_INR = 10
-    const amountInPaise = COURSE_PRICE_INR * 100 // 1000 paise (₹10)
+    const COURSE_PRICE_INR = 499
+    const amountInPaise = COURSE_PRICE_INR * 100 // 49900 paise
 
     const key_id = process.env.RAZORPAY_KEY_ID || process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID
     const key_secret = process.env.RAZORPAY_KEY_SECRET

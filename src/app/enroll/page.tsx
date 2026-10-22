@@ -16,7 +16,7 @@ declare global {
   }
 }
 
-const BASE_PRICE = 10
+const BASE_PRICE = 499
 
 const WHATSAPP_SUPPORT = process.env.NEXT_PUBLIC_WHATSAPP_SUPPORT ?? '917415562532'
 

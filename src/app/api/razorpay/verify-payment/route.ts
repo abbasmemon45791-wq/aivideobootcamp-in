@@ -44,7 +44,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Payment keys not configured' }, { status: 400 })
     }
 
-    const finalAmount = 10 // Fixed official test price (₹10)
+    const finalAmount = 499 // Fixed official price (₹499)
     const transactionId = razorpay_payment_id || `pay_demo_${Date.now()}`
 
     // ── DEDUPLICATION: Check if this payment or lead is already approved ──
