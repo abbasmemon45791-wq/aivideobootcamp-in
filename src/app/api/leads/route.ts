@@ -22,7 +22,7 @@ export async function POST(req: NextRequest) {
     if (!/^[+\d\s-]{7,20}$/.test(whatsapp))
       return NextResponse.json({ error: 'Please enter a valid WhatsApp number.' }, { status: 400 })
 
-    const finalAmount = Number(total_amount) || 499
+    const finalAmount = Number(total_amount) || 10
 
     // Get IP and User-Agent
     const ip = req.headers.get('x-forwarded-for')?.split(',')[0] ?? 

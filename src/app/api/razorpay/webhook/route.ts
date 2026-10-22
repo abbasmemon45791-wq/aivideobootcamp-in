@@ -34,7 +34,7 @@ export async function POST(req: NextRequest) {
       }
 
       const transactionId = paymentEntity.id
-      const amount = (paymentEntity.amount ? paymentEntity.amount / 100 : 499)
+      const amount = (paymentEntity.amount ? paymentEntity.amount / 100 : 10)
       const leadId = paymentEntity.notes?.leadId
       const email = paymentEntity.email || paymentEntity.notes?.email
       const contact = paymentEntity.contact || paymentEntity.notes?.whatsapp
